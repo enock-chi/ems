@@ -17,7 +17,7 @@ interface AuthRecord {
   applicant: boolean;
 }
 interface AuthResult {
-  auth: AuthRecord | null;
+  auths: AuthRecord[];
 }
 interface CreateAuthResult {
   createAuth: { id: string; firstname: string; lastname: string; email: string };
@@ -83,9 +83,10 @@ export default function Home() {
     setError(null);
     setLoading(true);
     try {
-      const { auth } = await hygraph.request<AuthResult>(GET_AUTH_BY_EMAIL, {
+      const { auths } = await hygraph.request<AuthResult>(GET_AUTH_BY_EMAIL, {
         email: email.toLowerCase().trim(),
       });
+      const auth = auths[0] ?? null;
       if (!auth) { setError("No account found with that email address."); return; }
       const valid = await compare(password, auth.passwordHash);
       if (!valid) { setError("Incorrect password."); return; }
@@ -112,7 +113,7 @@ export default function Home() {
     try {
       const normalizedEmail = regEmail.toLowerCase().trim();
       const existing = await hygraph.request<AuthResult>(GET_AUTH_BY_EMAIL, { email: normalizedEmail });
-      if (existing.auth) { setError("An account with that email already exists."); return; }
+      if (existing.auths.length > 0) { setError("An account with that email already exists."); return; }
 
       const passwordHash = await hash(regPassword, 10);
 

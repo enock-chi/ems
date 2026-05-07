@@ -4,7 +4,7 @@
 
 export const GET_AUTH_BY_EMAIL = gql`
   query GetAuthByEmail($email: String!) {
-    auth(where: { email: $email }) {
+    auths(where: { email: $email }, first: 1) {
       id
       firstname
       lastname
@@ -55,6 +55,30 @@ export const PUBLISH_AUTH = gql`
   mutation PublishAuth($id: ID!) {
     publishAuth(where: { id: $id }) {
       id
+    }
+  }
+`;
+
+// ─── Postings ────────────────────────────────────────────────────────────────
+
+export const GET_POSTINGS = gql`
+  query GetPostings {
+    postings {
+      id
+      ref
+      title
+      department
+      positions
+      description
+      notes
+      closingdate
+      location
+      enquiries
+      compensation
+      requirements {
+        id
+        criteria
+      }
     }
   }
 `;
