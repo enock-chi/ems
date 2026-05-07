@@ -80,6 +80,25 @@ export const GET_POSTINGS = gql`
         id
         criteria
       }
+      applications {
+        id
+        ref
+        firstname
+        lastname
+        identification
+        screeningpass
+        createdAt
+        cv {
+          id
+          url
+          fileName
+        }
+        supportingdocs {
+          id
+          url
+          fileName
+        }
+      }
     }
   }
 `;
@@ -122,6 +141,75 @@ export const GET_APPLICATIONS = gql`
         url
         fileName
       }
+    }
+  }
+`;
+
+export const UPDATE_POSTING_ADD_APPLICATION = gql`
+  mutation UpdatePostingAddApplication($postingId: ID!, $applicationId: ID!) {
+    updatePosting(
+      where: { id: $postingId }
+      data: { applications: { connect: { where: { id: $applicationId } } } }
+    ) {
+      id
+    }
+  }
+`;
+
+export const PUBLISH_POSTING = gql`
+  mutation PublishPosting($id: ID!) {
+    publishPosting(where: { id: $id }) {
+      id
+    }
+  }
+`;
+
+export const PUBLISH_ASSET = gql`
+  mutation PublishAsset($id: ID!) {
+    publishAsset(where: { id: $id }) {
+      id
+    }
+  }
+`;
+
+export const CREATE_POSTING = gql`
+  mutation CreatePosting($data: PostingCreateInput!) {
+    createPosting(data: $data) {
+      id
+      ref
+      title
+      department
+      positions
+      description
+      notes
+      closingdate
+      location
+      enquiries
+      compensation
+    }
+  }
+`;
+
+export const UPDATE_POSTING = gql`
+  mutation UpdatePosting($id: ID!, $data: PostingUpdateInput!) {
+    updatePosting(where: { id: $id }, data: $data) {
+      id
+    }
+  }
+`;
+
+export const UNPUBLISH_POSTING = gql`
+  mutation UnpublishPosting($id: ID!) {
+    unpublishPosting(where: { id: $id }) {
+      id
+    }
+  }
+`;
+
+export const DELETE_POSTING = gql`
+  mutation DeletePosting($id: ID!) {
+    deletePosting(where: { id: $id }) {
+      id
     }
   }
 `;

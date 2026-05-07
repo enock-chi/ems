@@ -26,6 +26,7 @@ interface StoredSession {
 
 interface AuthContextValue {
   user: AuthUser | null;
+  hydrating: boolean;
   login: (user: AuthUser) => void;
   logout: () => void;
 }
@@ -66,12 +67,14 @@ function writeSession(user: AuthUser): void {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [hydrating, setHydrating] = useState(true);
   const lastActivityRefresh = useRef<number>(0);
 
   // Hydrate from storage on mount.
   useEffect(() => {
     const session = readSession();
     if (session) setUser(session.user);
+    setHydrating(false);
   }, []);
 
   const logout = useCallback(() => {
@@ -127,7 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, hydrating, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { gql } from "graphql-request";
 import { hygraph } from "@/lib/hygraph";
-import { CREATE_APPLICATION, PUBLISH_APPLICATION } from "@/lib/queries";
+import { CREATE_APPLICATION, PUBLISH_APPLICATION, UPDATE_POSTING_ADD_APPLICATION, PUBLISH_POSTING, PUBLISH_ASSET } from "@/lib/queries";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { setPosting as reduxSetPosting, setAnswer as reduxSetAnswer, clearDraft } from "@/store/applySlice";
 
 // ─── Asset upload (two-step: create entry → upload to S3 with presigned data) ──
 
@@ -84,25 +86,7 @@ async function uploadAsset(file: File): Promise<string> {
   return createAsset.id;
 }
 
-interface Requirement {
-  id: string;
-  criteria: string[];
-}
-
-interface Posting {
-  id: string;
-  ref: string;
-  title: string;
-  department: string;
-  positions: string;
-  description: string;
-  notes: string;
-  closingdate: string;
-  location: string;
-  enquiries: string;
-  compensation: string;
-  requirements: Requirement[];
-}
+import type { Posting } from "@/store/types";
 
 const STORAGE_KEY = "ems_apply_posting";
 
@@ -190,34 +174,37 @@ function FileZone({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ApplyPage() {
-  const { user, logout } = useAuth();
+  const { user, hydrating, logout } = useAuth();
   const router = useRouter();
-  const [posting, setPosting] = useState<Posting | null>(null);
+  const dispatch = useAppDispatch();
+  const { posting, answers } = useAppSelector((s) => s.apply);
 
-  // Form state
-  const [answers, setAnswers] = useState<Record<string, boolean | null>>({});
+  // File state — File objects cannot be serialized, these always reset on refresh
   const [cvFiles, setCvFiles] = useState<File[]>([]);
   const [supportingFiles, setSupportingFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [screeningPassed, setScreeningPassed] = useState(false);
 
   useEffect(() => {
+    if (hydrating) return;
     if (!user) { router.replace("/"); return; }
     if (user.role !== "applicant") { router.replace("/hr"); return; }
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) { router.replace("/applicant"); return; }
+      if (!raw) {
+        // No posting selected — only redirect if Redux draft is also empty
+        if (!posting) { router.replace("/applicant"); return; }
+        return;
+      }
       const p = JSON.parse(raw) as Posting;
-      setPosting(p);
-      // Initialise all answers to null
-      const init: Record<string, boolean | null> = {};
-      p.requirements.flatMap((r) => r.criteria).forEach((c) => { init[c] = null; });
-      setAnswers(init);
+      // Always dispatch so Redux is the source of truth (handles refresh)
+      dispatch(reduxSetPosting(p));
     } catch {
       router.replace("/applicant");
     }
-  }, [user, router]);
+  }, [user, hydrating, router]);
 
   if (!user || user.role !== "applicant" || !posting) {
     return (
@@ -228,6 +215,30 @@ export default function ApplyPage() {
   }
 
   if (submitted) {
+    if (screeningPassed) {
+      return (
+        <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center px-6">
+          <div className="max-w-md w-full rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-10 text-center space-y-5">
+            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 mx-auto">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Just one more step</h1>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Great news — you meet the screening requirements for{" "}
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">{posting.title}</span>.
+              Please complete the Z83 Government Application Form to finalise your application.
+            </p>
+            <button onClick={() => router.push("/applicant/z83")}
+              className="mt-2 w-full rounded-xl bg-red-600 hover:bg-red-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors">
+              Continue to Z83 form
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center px-6">
         <div className="max-w-md w-full rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-10 text-center space-y-4">
@@ -258,12 +269,13 @@ export default function ApplyPage() {
   const allCriteria = posting.requirements.flatMap((r) => r.criteria);
 
   function setAnswer(criterion: string, value: boolean) {
-    setAnswers((prev) => ({ ...prev, [criterion]: value }));
+    dispatch(reduxSetAnswer({ criterion, value }));
   }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!user || !posting) return;
 
     const unanswered = allCriteria.filter((c) => answers[c] === null);
     if (unanswered.length > 0) { setError("Please answer all requirement questions."); return; }
@@ -273,14 +285,17 @@ export default function ApplyPage() {
     const screeningpass = allCriteria.every((c) => answers[c] === true);
     const [firstName, ...rest] = (user.name ?? "").trim().split(" ");
     const lastName = rest.join(" ");
-    const ref = `APP-${Date.now()}`;
+    const ref = posting.ref;
 
     setSubmitting(true);
 
     (async () => {
       try {
         const cvId = await uploadAsset(cvFiles[0]);
+        await hygraph.request(PUBLISH_ASSET, { id: cvId });
+
         const supportingIds = await Promise.all(supportingFiles.map(uploadAsset));
+        await Promise.all(supportingIds.map((id) => hygraph.request(PUBLISH_ASSET, { id })));
 
         const result = await hygraph.request<{ createApplication: { id: string } }>(
           CREATE_APPLICATION,
@@ -299,7 +314,16 @@ export default function ApplyPage() {
 
         await hygraph.request(PUBLISH_APPLICATION, { id: result.createApplication.id });
 
+        // Connect application to the posting's Applications relation
+        await hygraph.request(UPDATE_POSTING_ADD_APPLICATION, {
+          postingId: posting.id,
+          applicationId: result.createApplication.id,
+        });
+        await hygraph.request(PUBLISH_POSTING, { id: posting.id });
+
         localStorage.removeItem("ems_apply_posting");
+        dispatch(clearDraft());
+        setScreeningPassed(screeningpass);
         setSubmitted(true);
       } catch (err) {
         console.error(err);

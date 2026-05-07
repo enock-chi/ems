@@ -185,22 +185,29 @@ function PostingDetail({ posting, onClose }: { posting: Posting; onClose: () => 
 
 // â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function ApplicantDashboard() {
-  const { user, logout } = useAuth();
+  const { user, hydrating, logout } = useAuth();
   const router = useRouter();
   const [selected, setSelected] = useState<Posting | null>(null);
 
   useEffect(() => {
+    if (hydrating) return;
     if (!user) router.replace("/");
     else if (user.role !== "applicant") router.replace("/hr");
-  }, [user, router]);
+  }, [user, hydrating, router]);
 
   const { data, isLoading, isError } = useQuery<PostingsResult>({
     queryKey: ["postings"],
     queryFn: () => hygraph.request<PostingsResult>(GET_POSTINGS),
-    enabled: !!user,
+    enabled: !!user && !hydrating,
   });
 
-  if (!user || user.role !== "applicant") return null;
+  if (hydrating || !user || user.role !== "applicant") {
+    return (
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center">
+        <div className="h-6 w-6 rounded-full border-2 border-red-600 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">

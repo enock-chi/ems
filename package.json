@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@reduxjs/toolkit": "^2.11.2",
     "@tanstack/react-query": "^5.100.9",
     "@tanstack/react-query-devtools": "^5.100.9",
     "bcryptjs": "^3.0.3",
@@ -16,7 +17,8 @@
     "graphql-request": "^7.4.0",
     "next": "16.2.5",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "react-redux": "^9.2.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

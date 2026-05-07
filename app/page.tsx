@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { compare, hash } from "bcryptjs";
 import { hygraph } from "@/lib/hygraph";
@@ -40,7 +40,14 @@ function Spinner() {
 
 export default function Home() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, user, hydrating } = useAuth();
+
+  // Redirect already-logged-in users away from the login page
+  useEffect(() => {
+    if (hydrating) return;
+    if (user?.role === "hr") router.replace("/hr");
+    else if (user?.role === "applicant") router.replace("/applicant");
+  }, [user, hydrating, router]);
 
   const [mode, setMode] = useState<"login" | "register">("login");
 
