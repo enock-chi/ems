@@ -76,6 +76,7 @@ function PostingCard({ posting, onClick }: { posting: Posting; onClick: () => vo
 // â”€â”€â”€ Detail slide-over â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function PostingDetail({ posting, onClose }: { posting: Posting; onClose: () => void }) {
   const allCriteria = posting.requirements.flatMap((r) => r.criteria);
+  const router = useRouter();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -168,7 +169,12 @@ function PostingDetail({ posting, onClose }: { posting: Posting; onClose: () => 
             Due to the large number of applications we envisage receiving, applications will not be acknowledged.
             If you do not receive any response within 3 months, please accept that your application was not successful.
           </p>
-          <button className="w-full rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 px-4 py-3 text-sm font-semibold text-white transition-colors">
+          <button
+            onClick={() => {
+              localStorage.setItem("ems_apply_posting", JSON.stringify(posting));
+              router.push("/applicant/apply");
+            }}
+            className="w-full rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 px-4 py-3 text-sm font-semibold text-white transition-colors">
             Apply now
           </button>
         </div>

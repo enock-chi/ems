@@ -10,6 +10,7 @@ export const GET_AUTH_BY_EMAIL = gql`
       lastname
       email
       passwordHash
+      identification
       hr
       applicant
     }
@@ -79,6 +80,24 @@ export const GET_POSTINGS = gql`
         id
         criteria
       }
+    }
+  }
+`;
+
+// ─── Applications ────────────────────────────────────────────────────────────
+
+export const CREATE_APPLICATION = gql`
+  mutation CreateApplication($data: ApplicationCreateInput!) {
+    createApplication(data: $data) {
+      id
+    }
+  }
+`;
+
+export const PUBLISH_APPLICATION = gql`
+  mutation PublishApplication($id: ID!) {
+    publishApplication(where: { id: $id }) {
+      id
     }
   }
 `;

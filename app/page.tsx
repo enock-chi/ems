@@ -13,6 +13,7 @@ interface AuthRecord {
   lastname: string;
   email: string;
   passwordHash: string;
+  identification: string;
   hr: boolean;
   applicant: boolean;
 }
@@ -91,7 +92,7 @@ export default function Home() {
       const valid = await compare(password, auth.passwordHash);
       if (!valid) { setError("Incorrect password."); return; }
       const role: UserRole = auth.hr ? "hr" : "applicant";
-      const user: AuthUser = { id: auth.id, name: `${auth.firstname} ${auth.lastname}`, email: auth.email, role };
+      const user: AuthUser = { id: auth.id, name: `${auth.firstname} ${auth.lastname}`, email: auth.email, role, identification: auth.identification };
       login(user);
       router.push(role === "hr" ? "/hr" : "/applicant");
     } catch (err) {
@@ -136,6 +137,7 @@ export default function Home() {
         name: `${result.createAuth.firstname} ${result.createAuth.lastname}`,
         email: result.createAuth.email,
         role: regRole,
+        identification: regRole === "applicant" ? regIdNumber.trim() : undefined,
       };
       login(user);
       router.push(regRole === "hr" ? "/hr" : "/applicant");
