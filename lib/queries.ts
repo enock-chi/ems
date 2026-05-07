@@ -101,3 +101,27 @@ export const PUBLISH_APPLICATION = gql`
     }
   }
 `;
+
+export const GET_APPLICATIONS = gql`
+  query GetApplications {
+    applications(orderBy: createdAt_DESC) {
+      id
+      ref
+      firstname
+      lastname
+      identification
+      screeningpass
+      createdAt
+      cv {
+        id
+        url
+        fileName
+      }
+      supportingdocs {
+        id
+        url
+        fileName
+      }
+    }
+  }
+`;

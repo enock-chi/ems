@@ -63,7 +63,18 @@ export default function Home() {
 
   function switchMode(next: "login" | "register") {
     setError(null);
-    setRegRole(null);
+    if (next === "register") {
+      setRegRole("applicant");
+      setRegFirstname("");
+      setRegLastname("");
+      setRegEmail("");
+      setRegContact("");
+      setRegIdNumber("");
+      setRegPassword("");
+      setRegConfirm("");
+    } else {
+      setRegRole(null);
+    }
     setMode(next);
   }
 
@@ -89,7 +100,17 @@ export default function Home() {
       });
       const auth = auths[0] ?? null;
       if (!auth) { setError("No account found with that email address."); return; }
-      const valid = await compare(password, auth.passwordHash);
+      // Try bcrypt first (accounts created via app), fall back to plain-text
+      // comparison for accounts whose password was set directly in Hygraph.
+      let valid = false;
+      try {
+        valid = await compare(password, auth.passwordHash);
+      } catch {
+        valid = false;
+      }
+      if (!valid) {
+        valid = password === auth.passwordHash;
+      }
       if (!valid) { setError("Incorrect password."); return; }
       const role: UserRole = auth.hr ? "hr" : "applicant";
       const user: AuthUser = { id: auth.id, name: `${auth.firstname} ${auth.lastname}`, email: auth.email, role, identification: auth.identification };
@@ -207,36 +228,7 @@ export default function Home() {
 
           {mode === "register" && (
             <div className="space-y-6">
-              <div>
-                <p className={labelClass}>I am registering as</p>
-                <div className="grid grid-cols-2 gap-3 mt-1">
-                  <button type="button" onClick={() => pickRole("applicant")}
-                    className={`flex flex-col items-center gap-2 rounded-xl border-2 px-4 py-5 text-sm font-medium transition-all ${
-                      regRole === "applicant"
-                        ? "border-red-500 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400"
-                        : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500"
-                    }`}>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    Applicant
-                  </button>
-                  <button type="button" onClick={() => pickRole("hr")}
-                    className={`flex flex-col items-center gap-2 rounded-xl border-2 px-4 py-5 text-sm font-medium transition-all ${
-                      regRole === "hr"
-                        ? "border-red-500 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400"
-                        : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500"
-                    }`}>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    HR Staff
-                  </button>
-                </div>
-              </div>
-
-              {regRole !== null && (
-                <form onSubmit={handleRegister} noValidate className="space-y-5">
+              <form onSubmit={handleRegister} noValidate className="space-y-5">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label htmlFor="reg-firstname" className={labelClass}>First name</label>
@@ -260,12 +252,10 @@ export default function Home() {
                       onChange={(e) => setRegContact(e.target.value)} className={inputClass} placeholder="+27 82 000 0000" />
                   </div>
                   <div>
-                    <label htmlFor="reg-id" className={labelClass}>
-                      {regRole === "hr" ? "Employee ID" : "National ID"}
-                    </label>
+                    <label htmlFor="reg-id" className={labelClass}>National ID</label>
                     <input id="reg-id" type="text" required value={regIdNumber}
                       onChange={(e) => setRegIdNumber(e.target.value)} className={inputClass}
-                      placeholder={regRole === "hr" ? "EMP-00000" : "ID number"} />
+                      placeholder="ID number" />
                   </div>
                   <div>
                     <label htmlFor="reg-password" className={labelClass}>Password</label>
@@ -283,7 +273,6 @@ export default function Home() {
                     {loading ? <><Spinner /> Creating account…</> : "Create account"}
                   </button>
                 </form>
-              )}
             </div>
           )}
         </div>
