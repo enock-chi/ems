@@ -403,6 +403,7 @@ function ApplicationsPanel() {
 
   const [passOpen, setPassOpen] = useState(true);
   const [failOpen, setFailOpen] = useState(true);
+  const [z83Open,  setZ83Open]  = useState(true);
   // Track open state for each criterion section by index
   const [criterionOpen, setCriterionOpen] = useState<boolean[]>([]);
 
@@ -415,8 +416,9 @@ function ApplicationsPanel() {
     });
   }, [allCriteria]);
 
-  const passed = apps.filter((a) => a.screeningpass);
-  const failed = apps.filter((a) => !a.screeningpass);
+  const passed    = apps.filter((a) => a.screeningpass);
+  const failed    = apps.filter((a) => !a.screeningpass);
+  const z83passed = apps.filter((a) => a.z83pass === true);
 
   if (isLoading && apps.length === 0) return <Spinner />;
   if (isError   && apps.length === 0) return <ErrorMsg>Failed to load applications.</ErrorMsg>;
@@ -432,8 +434,9 @@ function ApplicationsPanel() {
 
       {apps.length > 0 && (
         <div className="space-y-3">
-          <AppSection title="Passed Screening" apps={passed} accent="green" open={passOpen} onToggle={() => setPassOpen((v) => !v)} />
-          <AppSection title="Failed Screening"  apps={failed} accent="red"   open={failOpen} onToggle={() => setFailOpen((v) => !v)} />
+          <AppSection title="Passed Screening"      apps={passed}    accent="green" open={passOpen} onToggle={() => setPassOpen((v) => !v)} />
+          <AppSection title="Failed Screening"      apps={failed}    accent="red"   open={failOpen} onToggle={() => setFailOpen((v) => !v)} />
+          <AppSection title="Passed Z83 Screening"  apps={z83passed} accent="green" open={z83Open}  onToggle={() => setZ83Open((v) => !v)} />
 
           {allCriteria.map((c, i) => {
             const refs     = criterionToRefs.get(c) ?? new Set<string>();

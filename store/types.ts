@@ -18,6 +18,7 @@ export interface Application {
   lastname: string;
   identification: string;
   screeningpass: boolean;
+  z83pass: boolean | null;
   createdAt: string;
   cv: AssetRef | null;
   supportingdocs: AssetRef | null;

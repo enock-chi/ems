@@ -2,27 +2,7 @@
 
 import { useState, FormEvent, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { compare, hash } from "bcryptjs";
-import { hygraph } from "@/lib/hygraph";
-import { GET_AUTH_BY_EMAIL, CREATE_AUTH, PUBLISH_AUTH } from "@/lib/queries";
 import { useAuth, AuthUser, UserRole } from "@/context/auth-context";
-
-interface AuthRecord {
-  id: string;
-  firstname: string;
-  lastname: string;
-  email: string;
-  passwordHash: string;
-  identification: string;
-  hr: boolean;
-  applicant: boolean;
-}
-interface AuthResult {
-  auths: AuthRecord[];
-}
-interface CreateAuthResult {
-  createAuth: { id: string; firstname: string; lastname: string; email: string };
-}
 
 const inputClass =
   "w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3.5 py-2.5 text-sm text-zinc-900 dark:text-zinc-50 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition";
@@ -102,27 +82,16 @@ export default function Home() {
     setError(null);
     setLoading(true);
     try {
-      const { auths } = await hygraph.request<AuthResult>(GET_AUTH_BY_EMAIL, {
-        email: email.toLowerCase().trim(),
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
       });
-      const auth = auths[0] ?? null;
-      if (!auth) { setError("No account found with that email address."); return; }
-      // Try bcrypt first (accounts created via app), fall back to plain-text
-      // comparison for accounts whose password was set directly in Hygraph.
-      let valid = false;
-      try {
-        valid = await compare(password, auth.passwordHash);
-      } catch {
-        valid = false;
-      }
-      if (!valid) {
-        valid = password === auth.passwordHash;
-      }
-      if (!valid) { setError("Incorrect password."); return; }
-      const role: UserRole = auth.hr ? "hr" : "applicant";
-      const user: AuthUser = { id: auth.id, name: `${auth.firstname} ${auth.lastname}`, email: auth.email, role, identification: auth.identification };
+      const data = await res.json() as { error?: string; id?: string; name?: string; email?: string; role?: UserRole; identification?: string };
+      if (!res.ok) { setError(data.error ?? "Something went wrong."); return; }
+      const user: AuthUser = { id: data.id!, name: data.name!, email: data.email!, role: data.role!, identification: data.identification };
       login(user);
-      router.push(role === "hr" ? "/hr" : "/applicant");
+      router.push(data.role === "hr" ? "/hr" : "/applicant");
     } catch (err) {
       console.error(err);
       setError("Something went wrong. Please try again.");
@@ -140,35 +109,24 @@ export default function Home() {
 
     setLoading(true);
     try {
-      const normalizedEmail = regEmail.toLowerCase().trim();
-      const existing = await hygraph.request<AuthResult>(GET_AUTH_BY_EMAIL, { email: normalizedEmail });
-      if (existing.auths.length > 0) { setError("An account with that email already exists."); return; }
-
-      const passwordHash = await hash(regPassword, 10);
-
-      const result = await hygraph.request<CreateAuthResult>(CREATE_AUTH, {
-        firstname: regFirstname.trim(),
-        lastname: regLastname.trim(),
-        email: normalizedEmail,
-        passwordHash,
-        contact: regContact.trim(),
-        empid: regRole === "hr" ? regIdNumber.trim() : null,
-        identification: regRole === "applicant" ? regIdNumber.trim() : null,
-        hr: regRole === "hr",
-        applicant: regRole === "applicant",
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: regRole,
+          firstname: regFirstname,
+          lastname: regLastname,
+          email: regEmail,
+          contact: regContact,
+          idNumber: regIdNumber,
+          password: regPassword,
+        }),
       });
-
-      await hygraph.request(PUBLISH_AUTH, { id: result.createAuth.id });
-
-      const user: AuthUser = {
-        id: result.createAuth.id,
-        name: `${result.createAuth.firstname} ${result.createAuth.lastname}`,
-        email: result.createAuth.email,
-        role: regRole,
-        identification: regRole === "applicant" ? regIdNumber.trim() : undefined,
-      };
+      const data = await res.json() as { error?: string; id?: string; name?: string; email?: string; role?: UserRole; identification?: string };
+      if (!res.ok) { setError(data.error ?? "Something went wrong."); return; }
+      const user: AuthUser = { id: data.id!, name: data.name!, email: data.email!, role: data.role!, identification: data.identification };
       login(user);
-      router.push(regRole === "hr" ? "/hr" : "/applicant");
+      router.push(data.role === "hr" ? "/hr" : "/applicant");
     } catch (err) {
       console.error(err);
       setError("Something went wrong. Please try again.");

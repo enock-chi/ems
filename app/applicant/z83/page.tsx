@@ -3,6 +3,15 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
+import { hygraph } from "@/lib/hygraph";
+import {
+  GET_APPLICATION_BY_IDENTIFICATION,
+  CREATE_LANGUAGE, PUBLISH_LANGUAGE,
+  CREATE_EDUCATION, PUBLISH_EDUCATION,
+  CREATE_WORKXP, PUBLISH_WORKXP,
+  CREATE_REFERENCE, PUBLISH_REFERENCE,
+  UPDATE_APPLICATION_Z83, PUBLISH_APPLICATION,
+} from "@/lib/queries";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   setField, seedFromProfile,
@@ -82,6 +91,8 @@ export default function Z83Page() {
   const posting = useAppSelector((s) => s.apply.posting);
 
   const [done, setDone] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (hydrating) return;
@@ -124,7 +135,129 @@ export default function Z83Page() {
 
   const proficiencyOpts = ["", "Basic", "Fluent", "Native"];
 
-  // ── Done screen ────────────────────────────────────────────────────────────
+  // ── Submit handler ─────────────────────────────────────────────────────────
+
+  async function handleSubmit() {
+    if (!user || !posting) return;
+    setSubmitError(null);
+    setSubmitting(true);
+
+    try {
+      // 1. Find the application that belongs to this user + posting (match by identification + ref)
+      const { applications: found } = await hygraph.request<{
+        applications: { id: string }[];
+      }>(GET_APPLICATION_BY_IDENTIFICATION, {
+        identification: user.identification ?? "",
+        ref: posting.ref,
+      });
+
+      if (!found || found.length === 0) {
+        setSubmitError("Could not find your application. Please ensure you completed the initial apply step.");
+        setSubmitting(false);
+        return;
+      }
+      const appId = found[0].id;
+
+      // 2. Create Language records (skip blank rows)
+      const langIds = await Promise.all(
+        z83.languages
+          .filter((r) => r.language.trim())
+          .map(async (r) => {
+            const { createLanguage } = await hygraph.request<{ createLanguage: { id: string } }>(
+              CREATE_LANGUAGE,
+              { name: r.language, speak: r.speak, read: r.read, write: r.write }
+            );
+            await hygraph.request(PUBLISH_LANGUAGE, { id: createLanguage.id });
+            return createLanguage.id;
+          })
+      );
+
+      // 3. Create Education records (skip blank rows)
+      const eduIds = await Promise.all(
+        z83.qualifications
+          .filter((r) => r.institution.trim())
+          .map(async (r) => {
+            const { createEducation } = await hygraph.request<{ createEducation: { id: string } }>(
+              CREATE_EDUCATION,
+              { institution: r.institution, qualification: r.qualification, obtained: r.year, province: r.province }
+            );
+            await hygraph.request(PUBLISH_EDUCATION, { id: createEducation.id });
+            return createEducation.id;
+          })
+      );
+
+      // 4. Create Workxp records (skip blank rows)
+      const workIds = await Promise.all(
+        z83.experience
+          .filter((r) => r.employer.trim())
+          .map(async (r) => {
+            const { createWorkxp } = await hygraph.request<{ createWorkxp: { id: string } }>(
+              CREATE_WORKXP,
+              {
+                employer: r.employer,
+                title: r.post,
+                fromdate: r.from,
+                todate: r.to,
+                reason: r.reason,
+                conditions: r.publicConditions,
+              }
+            );
+            await hygraph.request(PUBLISH_WORKXP, { id: createWorkxp.id });
+            return createWorkxp.id;
+          })
+      );
+
+      // 5. Create Reference records (skip blank rows)
+      const refIds = await Promise.all(
+        z83.references
+          .filter((r) => r.name.trim())
+          .map(async (r) => {
+            const { createReference } = await hygraph.request<{ createReference: { id: string } }>(
+              CREATE_REFERENCE,
+              { fullname: r.name, relationship: r.relationship, telNumber: r.tel }
+            );
+            await hygraph.request(PUBLISH_REFERENCE, { id: createReference.id });
+            return createReference.id;
+          })
+      );
+
+      // 6. Update the application with all linked records
+      // z83pass: saCitizen must be Yes; every other boolean question must be No
+      const z83pass =
+        z83.saCitizen         === "Yes" &&
+        z83.disability        === "No"  &&
+        z83.criminalOffence   === "No"  &&
+        z83.pendingCriminal   === "No"  &&
+        z83.dismissalHistory  === "No"  &&
+        z83.pendingDisciplinary === "No" &&
+        z83.resignationPending  === "No" &&
+        z83.dischargeHistory    === "No" &&
+        z83.businessConduct     === "No";
+
+      const connectIds = (ids: string[]) => ids.map((id) => ({ where: { id } }));
+      await hygraph.request(UPDATE_APPLICATION_Z83, {
+        id: appId,
+        data: {
+          z83pass,
+          ...(langIds.length  && { languages:  { connect: connectIds(langIds)  } }),
+          ...(eduIds.length   && { educations: { connect: connectIds(eduIds)   } }),
+          ...(workIds.length  && { workxps:    { connect: connectIds(workIds)  } }),
+          ...(refIds.length   && { references: { connect: connectIds(refIds)   } }),
+        },
+      });
+      await hygraph.request(PUBLISH_APPLICATION, { id: appId });
+
+      dispatch(clearZ83());
+      setDone(true);
+    } catch (err) {
+      console.error(err);
+      setSubmitError("Submission failed. Please check your connection and try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+
 
   if (done) {
     return (
@@ -609,9 +742,17 @@ export default function Z83Page() {
             I certify that the information provided in this application is true and correct. I understand that
             providing false information may result in disqualification or dismissal.
           </p>
-          <button type="button" onClick={() => setDone(true)}
-            className="w-full rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 px-4 py-3 text-sm font-semibold text-white transition-colors">
-            Submit Z83 Application
+          {submitError && (
+            <p className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-600 dark:text-red-400">
+              {submitError}
+            </p>
+          )}
+          <button type="button" disabled={submitting} onClick={handleSubmit}
+            className="w-full rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-3 text-sm font-semibold text-white transition-colors flex items-center justify-center gap-2">
+            {submitting && (
+              <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            )}
+            {submitting ? "Submitting…" : "Submit Z83 Application"}
           </button>
         </div>
 
