@@ -166,7 +166,7 @@ export function selectFilteredPostings(state: RootState): Posting[] {
     const matchesSearch =
       !search ||
       p.title.toLowerCase().includes(search) ||
-      p.ref.toLowerCase().includes(search) ||
+      p.ref_code.toLowerCase().includes(search) ||
       p.department.toLowerCase().includes(search) ||
       p.location.toLowerCase().includes(search);
     return matchesDept && matchesSearch;
