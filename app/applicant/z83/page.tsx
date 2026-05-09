@@ -3,15 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
-import { hygraph } from "@/lib/hygraph";
-import {
-  GET_APPLICATION_BY_IDENTIFICATION,
-  CREATE_LANGUAGE, PUBLISH_LANGUAGE,
-  CREATE_EDUCATION, PUBLISH_EDUCATION,
-  CREATE_WORKXP, PUBLISH_WORKXP,
-  CREATE_REFERENCE, PUBLISH_REFERENCE,
-  UPDATE_APPLICATION_Z83, PUBLISH_APPLICATION,
-} from "@/lib/queries";
+import { apiClient } from "@/lib/api";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   setField, seedFromProfile,
@@ -143,109 +135,51 @@ export default function Z83Page() {
     setSubmitting(true);
 
     try {
-      // 1. Find the application that belongs to this user + posting (match by identification + ref)
-      const { applications: found } = await hygraph.request<{
-        applications: { id: string }[];
-      }>(GET_APPLICATION_BY_IDENTIFICATION, {
-        identification: user.identification ?? "",
-        ref: posting.ref,
-      });
+      await apiClient.post("/z83", {
+        user_id: user.id,
+        posting_id: posting.id,
 
-      if (!found || found.length === 0) {
-        setSubmitError("Could not find your application. Please ensure you completed the initial apply step.");
-        setSubmitting(false);
-        return;
-      }
-      const appId = found[0].id;
-
-      // 2. Create Language records (skip blank rows)
-      const langIds = await Promise.all(
-        z83.languages
-          .filter((r) => r.language.trim())
-          .map(async (r) => {
-            const { createLanguage } = await hygraph.request<{ createLanguage: { id: string } }>(
-              CREATE_LANGUAGE,
-              { name: r.language, speak: r.speak, read: r.read, write: r.write }
-            );
-            await hygraph.request(PUBLISH_LANGUAGE, { id: createLanguage.id });
-            return createLanguage.id;
-          })
-      );
-
-      // 3. Create Education records (skip blank rows)
-      const eduIds = await Promise.all(
-        z83.qualifications
-          .filter((r) => r.institution.trim())
-          .map(async (r) => {
-            const { createEducation } = await hygraph.request<{ createEducation: { id: string } }>(
-              CREATE_EDUCATION,
-              { institution: r.institution, qualification: r.qualification, obtained: r.year, province: r.province }
-            );
-            await hygraph.request(PUBLISH_EDUCATION, { id: createEducation.id });
-            return createEducation.id;
-          })
-      );
-
-      // 4. Create Workxp records (skip blank rows)
-      const workIds = await Promise.all(
-        z83.experience
-          .filter((r) => r.employer.trim())
-          .map(async (r) => {
-            const { createWorkxp } = await hygraph.request<{ createWorkxp: { id: string } }>(
-              CREATE_WORKXP,
-              {
-                employer: r.employer,
-                title: r.post,
-                fromdate: r.from,
-                todate: r.to,
-                reason: r.reason,
-                conditions: r.publicConditions,
-              }
-            );
-            await hygraph.request(PUBLISH_WORKXP, { id: createWorkxp.id });
-            return createWorkxp.id;
-          })
-      );
-
-      // 5. Create Reference records (skip blank rows)
-      const refIds = await Promise.all(
-        z83.references
-          .filter((r) => r.name.trim())
-          .map(async (r) => {
-            const { createReference } = await hygraph.request<{ createReference: { id: string } }>(
-              CREATE_REFERENCE,
-              { fullname: r.name, relationship: r.relationship, telNumber: r.tel }
-            );
-            await hygraph.request(PUBLISH_REFERENCE, { id: createReference.id });
-            return createReference.id;
-          })
-      );
-
-      // 6. Update the application with all linked records
-      // z83pass: saCitizen must be Yes; every other boolean question must be No
-      const z83pass =
-        z83.saCitizen         === "Yes" &&
-        z83.disability        === "No"  &&
-        z83.criminalOffence   === "No"  &&
-        z83.pendingCriminal   === "No"  &&
-        z83.dismissalHistory  === "No"  &&
-        z83.pendingDisciplinary === "No" &&
-        z83.resignationPending  === "No" &&
-        z83.dischargeHistory    === "No" &&
-        z83.businessConduct     === "No";
-
-      const connectIds = (ids: string[]) => ids.map((id) => ({ where: { id } }));
-      await hygraph.request(UPDATE_APPLICATION_Z83, {
-        id: appId,
-        data: {
-          z83pass,
-          ...(langIds.length  && { languages:  { connect: connectIds(langIds)  } }),
-          ...(eduIds.length   && { educations: { connect: connectIds(eduIds)   } }),
-          ...(workIds.length  && { workxps:    { connect: connectIds(workIds)  } }),
-          ...(refIds.length   && { references: { connect: connectIds(refIds)   } }),
+        // application_questions table
+        questions: {
+          disability:               z83.disability        === "Yes",
+          citizen:                  z83.saCitizen         === "Yes",
+          criminal:                 z83.criminalOffence   === "Yes",
+          pending_criminal:         z83.pendingCriminal   === "Yes",
+          disciplinary:             z83.pendingDisciplinary === "Yes",
+          discharged:               z83.dischargeHistory  === "Yes",
+          professional_reg_number:  z83.registrationNumber || null,
         },
+
+        // education table
+        education: z83.qualifications
+          .filter((r) => r.institution.trim())
+          .map((r) => ({
+            institution:   r.institution,
+            qualification: r.qualification,
+            obtained_year: r.year,
+            province:      r.province,
+          })),
+
+        // work_experience table
+        work_experience: z83.experience
+          .filter((r) => r.employer.trim())
+          .map((r) => ({
+            employer:           r.employer,
+            job_title:          r.post,
+            from_date:          r.from,
+            to_date:            r.to,
+            reason_for_leaving: r.reason,
+          })),
+
+        // references_list table
+        references: z83.references
+          .filter((r) => r.name.trim())
+          .map((r) => ({
+            fullname:     r.name,
+            relationship: r.relationship,
+            tel_number:   r.tel,
+          })),
       });
-      await hygraph.request(PUBLISH_APPLICATION, { id: appId });
 
       dispatch(clearZ83());
       setDone(true);
@@ -359,7 +293,7 @@ export default function Z83Page() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Reference number <span className="text-red-500">*</span></label>
-              <input readOnly value={posting?.ref ?? ""} className={readonlyCls} />
+              <input readOnly value={posting?.ref_code ?? ""} className={readonlyCls} />
             </div>
             <div>
               <label className={labelCls}>Department <span className="text-red-500">*</span></label>

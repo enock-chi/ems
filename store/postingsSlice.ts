@@ -14,7 +14,7 @@ interface PostingsState {
   /** Working copy — edits happen here before being saved */
   draft: Posting[];
   /** IDs of postings with unsaved local changes */
-  dirtyIds: string[];
+  dirtyIds: number[];
   status: "idle" | "loading" | "error";
   filter: PostingsFilter;
 }
@@ -48,12 +48,9 @@ const initialState: PostingsState = {
 
 // ─── Async thunk ─────────────────────────────────────────────────────────────
 
-// Lazy import to avoid circular deps — hygraph lives in lib, not store
 export const fetchPostings = createAsyncThunk("postings/fetch", async () => {
-  const { hygraph } = await import("@/lib/hygraph");
-  const { GET_POSTINGS } = await import("@/lib/queries");
-  const data = await hygraph.request<{ postings: Posting[] }>(GET_POSTINGS);
-  return data.postings;
+  const { apiClient } = await import("@/lib/api");
+  return apiClient.get<Posting[]>("/postings");
 });
 
 // ─── Slice ────────────────────────────────────────────────────────────────────
@@ -80,7 +77,7 @@ const postingsSlice = createSlice({
     /** Edit a field on a draft posting */
     updateDraft(
       state,
-      action: PayloadAction<{ id: string; changes: Partial<Omit<Posting, "id">> }>
+      action: PayloadAction<{ id: number; changes: Partial<Omit<Posting, "id">> }>
     ) {
       const { id, changes } = action.payload;
       const idx = state.draft.findIndex((p) => p.id === id);
@@ -91,7 +88,7 @@ const postingsSlice = createSlice({
     },
 
     /** Discard local edits and revert to server version */
-    revertDraft(state, action: PayloadAction<string>) {
+    revertDraft(state, action: PayloadAction<number>) {
       const id = action.payload;
       const server = state.server.find((p) => p.id === id);
       if (server) {
@@ -102,7 +99,7 @@ const postingsSlice = createSlice({
     },
 
     /** Mark a posting as saved (clears dirty flag) */
-    markSaved(state, action: PayloadAction<string>) {
+    markSaved(state, action: PayloadAction<number>) {
       const id = action.payload;
       state.dirtyIds = state.dirtyIds.filter((d) => d !== id);
       // Promote draft to server snapshot
@@ -125,7 +122,7 @@ const postingsSlice = createSlice({
     },
 
     /** Remove a deleted posting from server + draft */
-    removePosting(state, action: PayloadAction<string>) {
+    removePosting(state, action: PayloadAction<number>) {
       state.server = state.server.filter((p) => p.id !== action.payload);
       state.draft  = state.draft.filter((p)  => p.id !== action.payload);
       state.dirtyIds = state.dirtyIds.filter((id) => id !== action.payload);

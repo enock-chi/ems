@@ -3,33 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { hygraph } from "@/lib/hygraph";
-import { GET_POSTINGS } from "@/lib/queries";
+import { apiClient } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
-
-interface Requirement {
-  id: string;
-  criteria: string[];
-}
-
-interface Posting {
-  id: string;
-  ref: string;
-  title: string;
-  department: string;
-  positions: string;
-  description: string;
-  notes: string;
-  closingdate: string;
-  location: string;
-  enquiries: string;
-  compensation: string;
-  requirements: Requirement[];
-}
-
-interface PostingsResult {
-  postings: Posting[];
-}
+import type { Posting } from "@/store/types";
 
 // â”€â”€â”€ Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function PostingCard({ posting, onClick }: { posting: Posting; onClick: () => void }) {
@@ -50,7 +26,7 @@ function PostingCard({ posting, onClick }: { posting: Posting; onClick: () => vo
         </div>
         {posting.positions && (
           <span className="shrink-0 rounded-full bg-red-50 dark:bg-red-900/30 px-2.5 py-1 text-xs font-semibold text-red-700 dark:text-red-400">
-            {posting.positions} {Number(posting.positions) === 1 ? "slot" : "slots"}
+            {posting.positions} {posting.positions === 1 ? "slot" : "slots"}
           </span>
         )}
       </div>
@@ -67,7 +43,7 @@ function PostingCard({ posting, onClick }: { posting: Posting; onClick: () => vo
             </>
           )}
         </span>
-        <span>{posting.closingdate ? `Closes ${posting.closingdate}` : ""}</span>
+        <span>{posting.closing_date ? `Closes ${posting.closing_date}` : ""}</span>
       </div>
     </button>
   );
@@ -75,7 +51,6 @@ function PostingCard({ posting, onClick }: { posting: Posting; onClick: () => vo
 
 // â”€â”€â”€ Detail slide-over â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function PostingDetail({ posting, onClose }: { posting: Posting; onClose: () => void }) {
-  const allCriteria = posting.requirements.flatMap((r) => r.criteria);
   const router = useRouter();
 
   useEffect(() => {
@@ -92,7 +67,7 @@ function PostingDetail({ posting, onClose }: { posting: Posting; onClose: () => 
         {/* Header */}
         <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-zinc-100 dark:border-zinc-800">
           <div>
-            <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-1">{posting.ref}</p>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-1">{posting.ref_code}</p>
             <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-50 leading-snug">{posting.title}</h2>
             {posting.department && (
               <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{posting.department}</p>
@@ -113,9 +88,9 @@ function PostingDetail({ posting, onClose }: { posting: Posting; onClose: () => 
         <div className="grid grid-cols-2 gap-px bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-800">
           {[
             { label: "Location", value: posting.location },
-            { label: "Vacancies", value: posting.positions },
-            { label: "Compensation", value: posting.compensation },
-            { label: "Closing date", value: posting.closingdate },
+            { label: "Vacancies",     value: posting.positions },
+            { label: "Compensation",  value: posting.compensation },
+            { label: "Closing date",  value: posting.closing_date },
           ].filter((f) => f.value).map((f) => (
             <div key={f.label} className="bg-white dark:bg-zinc-900 px-5 py-3">
               <p className="text-xs text-zinc-400 dark:text-zinc-500">{f.label}</p>
@@ -130,20 +105,6 @@ function PostingDetail({ posting, onClose }: { posting: Posting; onClose: () => 
             <div>
               <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-2">About this role</h3>
               <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed whitespace-pre-line">{posting.description}</p>
-            </div>
-          )}
-
-          {allCriteria.length > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">Requirements</h3>
-              <ul className="space-y-2.5">
-                {allCriteria.map((c, i) => (
-                  <li key={i} className="flex items-start gap-3 text-sm text-zinc-600 dark:text-zinc-400">
-                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
-                    {c}
-                  </li>
-                ))}
-              </ul>
             </div>
           )}
 
@@ -195,9 +156,9 @@ export default function ApplicantDashboard() {
     else if (user.role !== "applicant") router.replace("/hr");
   }, [user, hydrating, router]);
 
-  const { data, isLoading, isError } = useQuery<PostingsResult>({
+  const { data: postings = [], isLoading, isError } = useQuery<Posting[]>({
     queryKey: ["postings"],
-    queryFn: () => hygraph.request<PostingsResult>(GET_POSTINGS),
+    queryFn: () => apiClient.get<Posting[]>("/postings"),
     enabled: !!user && !hydrating,
   });
 
@@ -249,15 +210,15 @@ export default function ApplicantDashboard() {
           </div>
         )}
 
-        {!isLoading && !isError && data?.postings.length === 0 && (
+        {!isLoading && !isError && postings.length === 0 && (
           <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-12 text-center">
-            <p className="text-zinc-400 text-sm">No open positions right now â€” check back soon.</p>
+            <p className="text-zinc-400 text-sm">No open positions right now — check back soon.</p>
           </div>
         )}
 
-        {!isLoading && !isError && data && data.postings.length > 0 && (
+        {!isLoading && !isError && postings.length > 0 && (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {data.postings.map((posting) => (
+            {postings.map((posting) => (
               <PostingCard key={posting.id} posting={posting} onClick={() => setSelected(posting)} />
             ))}
           </div>

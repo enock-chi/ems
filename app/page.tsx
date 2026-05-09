@@ -192,53 +192,81 @@ export default function Home() {
           )}
 
           {mode === "register" && (
-            <div className="space-y-6">
-              <form onSubmit={handleRegister} noValidate className="space-y-5">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label htmlFor="reg-firstname" className={labelClass}>First name</label>
-                      <input id="reg-firstname" type="text" autoComplete="given-name" required value={regFirstname}
-                        onChange={(e) => setRegFirstname(e.target.value)} className={inputClass} placeholder="Jane" />
-                    </div>
-                    <div>
-                      <label htmlFor="reg-lastname" className={labelClass}>Last name</label>
-                      <input id="reg-lastname" type="text" autoComplete="family-name" required value={regLastname}
-                        onChange={(e) => setRegLastname(e.target.value)} className={inputClass} placeholder="Smith" />
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="reg-email" className={labelClass}>Email address</label>
-                    <input id="reg-email" type="email" autoComplete="email" required value={regEmail}
-                      onChange={(e) => setRegEmail(e.target.value)} className={inputClass} placeholder="you@example.com" />
-                  </div>
-                  <div>
-                    <label htmlFor="reg-contact" className={labelClass}>Contact number</label>
-                    <input id="reg-contact" type="tel" autoComplete="tel" required value={regContact}
-                      onChange={(e) => setRegContact(e.target.value)} className={inputClass} placeholder="+27 82 000 0000" />
-                  </div>
-                  <div>
-                    <label htmlFor="reg-id" className={labelClass}>National ID</label>
-                    <input id="reg-id" type="text" required value={regIdNumber}
-                      onChange={(e) => setRegIdNumber(e.target.value)} className={inputClass}
-                      placeholder="ID number" />
-                  </div>
-                  <div>
-                    <label htmlFor="reg-password" className={labelClass}>Password</label>
-                    <input id="reg-password" type="password" autoComplete="new-password" required value={regPassword}
-                      onChange={(e) => setRegPassword(e.target.value)} className={inputClass} placeholder="Min. 8 characters" />
-                  </div>
-                  <div>
-                    <label htmlFor="reg-confirm" className={labelClass}>Confirm password</label>
-                    <input id="reg-confirm" type="password" autoComplete="new-password" required value={regConfirm}
-                      onChange={(e) => setRegConfirm(e.target.value)} className={inputClass} placeholder="••••••••" />
-                  </div>
-                  {error && <p className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-2.5 text-sm text-red-700 dark:text-red-400">{error}</p>}
-                  <button type="submit" disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-2.5 text-sm font-semibold text-white transition-colors">
-                    {loading ? <><Spinner /> Creating account…</> : "Create account"}
-                  </button>
-                </form>
-            </div>
+            <form onSubmit={handleRegister} noValidate className="space-y-5">
+              {/* Role selector */}
+              <div>
+                <p className={labelClass}>I am registering as</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {(["applicant", "hr"] as UserRole[]).map((r) => (
+                    <button key={r} type="button" onClick={() => pickRole(r)}
+                      className={`rounded-xl border py-3 text-sm font-medium transition-all ${
+                        regRole === r
+                          ? "border-red-500 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 ring-1 ring-red-500"
+                          : "border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:border-zinc-400"
+                      }`}>
+                      {r === "applicant" ? "Applicant" : "HR Staff"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="reg-firstname" className={labelClass}>First name</label>
+                  <input id="reg-firstname" type="text" autoComplete="given-name" required value={regFirstname}
+                    onChange={(e) => setRegFirstname(e.target.value)} className={inputClass} placeholder="Jane" />
+                </div>
+                <div>
+                  <label htmlFor="reg-lastname" className={labelClass}>Last name</label>
+                  <input id="reg-lastname" type="text" autoComplete="family-name" required value={regLastname}
+                    onChange={(e) => setRegLastname(e.target.value)} className={inputClass} placeholder="Smith" />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="reg-email" className={labelClass}>Email address</label>
+                <input id="reg-email" type="email" autoComplete="email" required value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)} className={inputClass} placeholder="you@example.com" />
+              </div>
+
+              <div>
+                <label htmlFor="reg-contact" className={labelClass}>Contact number</label>
+                <input id="reg-contact" type="tel" autoComplete="tel" value={regContact}
+                  onChange={(e) => setRegContact(e.target.value)} className={inputClass} placeholder="+27 82 000 0000" />
+              </div>
+
+              <div>
+                <label htmlFor="reg-id" className={labelClass}>
+                  {regRole === "hr" ? "Employee ID" : "National ID / Passport number"}
+                </label>
+                <input id="reg-id" type="text" value={regIdNumber}
+                  onChange={(e) => setRegIdNumber(e.target.value)} className={inputClass}
+                  placeholder={regRole === "hr" ? "EMP-0001" : "8001015009087"} />
+              </div>
+
+              <div>
+                <label htmlFor="reg-password" className={labelClass}>Password</label>
+                <input id="reg-password" type="password" autoComplete="new-password" required value={regPassword}
+                  onChange={(e) => setRegPassword(e.target.value)} className={inputClass} placeholder="Min. 8 characters" />
+              </div>
+
+              <div>
+                <label htmlFor="reg-confirm" className={labelClass}>Confirm password</label>
+                <input id="reg-confirm" type="password" autoComplete="new-password" required value={regConfirm}
+                  onChange={(e) => setRegConfirm(e.target.value)} className={inputClass} placeholder="••••••••" />
+              </div>
+
+              {error && (
+                <p className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-2.5 text-sm text-red-700 dark:text-red-400">
+                  {error}
+                </p>
+              )}
+
+              <button type="submit" disabled={loading}
+                className="w-full flex items-center justify-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-2.5 text-sm font-semibold text-white transition-colors">
+                {loading ? <><Spinner /> Creating account…</> : "Create account"}
+              </button>
+            </form>
           )}
         </div>
       </div>

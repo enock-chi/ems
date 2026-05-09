@@ -3,92 +3,12 @@
 import { useEffect, useState, useRef, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
-import { gql } from "graphql-request";
-import { hygraph } from "@/lib/hygraph";
-import { CREATE_APPLICATION, PUBLISH_APPLICATION, UPDATE_POSTING_ADD_APPLICATION, PUBLISH_POSTING, PUBLISH_ASSET } from "@/lib/queries";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { setPosting as reduxSetPosting, setAnswer as reduxSetAnswer, clearDraft } from "@/store/applySlice";
-
-// ─── Asset upload (two-step: create entry → upload to S3 with presigned data) ──
-
-const CREATE_ASSET_UPLOAD = gql`
-  mutation CreateAssetUpload($fileName: String!) {
-    createAsset(data: { fileName: $fileName }) {
-      id
-      upload {
-        requestPostData {
-          url
-          date
-          key
-          signature
-          algorithm
-          policy
-          credential
-          securityToken
-        }
-      }
-    }
-  }
-`;
-
-async function uploadAsset(file: File): Promise<string> {
-  const { createAsset } = await hygraph.request<{
-    createAsset: {
-      id: string;
-      upload: {
-        requestPostData: {
-          url: string;
-          date: string;
-          key: string;
-          signature: string;
-          algorithm: string;
-          policy: string;
-          credential: string;
-          securityToken: string;
-        } | null;
-      } | null;
-    };
-  }>(CREATE_ASSET_UPLOAD, { fileName: file.name });
-
-  const rpd = createAsset.upload?.requestPostData;
-
-  if (rpd) {
-    // New asset system — upload to S3 using presigned data
-    const form = new FormData();
-    form.append("X-Amz-Date", rpd.date);
-    form.append("key", rpd.key);
-    form.append("X-Amz-Signature", rpd.signature);
-    form.append("X-Amz-Algorithm", rpd.algorithm);
-    form.append("policy", rpd.policy);
-    form.append("X-Amz-Credential", rpd.credential);
-    form.append("X-Amz-Security-Token", rpd.securityToken);
-    form.append("file", file); // must be last
-    const res = await fetch(rpd.url, { method: "POST", body: form });
-    if (!res.ok) throw new Error(`S3 upload failed for ${file.name}`);
-  } else {
-    // Legacy asset system — POST directly to upload endpoint
-    const endpoint = process.env.NEXT_PUBLIC_HYGRAPH_ENDPOINT ?? "";
-    // derive: https://eu-central-1.cdn.hygraph.com/content/{id}/master
-    //      → https://api-eu-central-1.hygraph.com/v2/{id}/master/upload
-    const uploadUrl = endpoint
-      .replace("eu-central-1.cdn.hygraph.com/content", "api-eu-central-1.hygraph.com/v2")
-      .replace(/\/master$/, "/master/upload");
-    const form = new FormData();
-    form.append("fileUpload", file);
-    const res = await fetch(uploadUrl, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.NEXT_PUBLIC_HYGRAPH_TOKEN}` },
-      body: form,
-    });
-    if (!res.ok) throw new Error(`Upload failed for ${file.name}`);
-  }
-
-  return createAsset.id;
-}
-
+import { setPosting as reduxSetPosting, clearDraft } from "@/store/applySlice";
 import type { Posting } from "@/store/types";
 
 const STORAGE_KEY = "ems_apply_posting";
+const BACKEND_URL = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "").replace(/\/$/, "");
 
 const inputClass =
   "w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3.5 py-2.5 text-sm text-zinc-900 dark:text-zinc-50 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition";
@@ -177,7 +97,7 @@ export default function ApplyPage() {
   const { user, hydrating, logout } = useAuth();
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { posting, answers } = useAppSelector((s) => s.apply);
+  const { posting } = useAppSelector((s) => s.apply);
 
   // File state — File objects cannot be serialized, these always reset on refresh
   const [cvFiles, setCvFiles] = useState<File[]>([]);
@@ -185,7 +105,6 @@ export default function ApplyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
-  const [screeningPassed, setScreeningPassed] = useState(false);
 
   useEffect(() => {
     if (hydrating) return;
@@ -215,30 +134,6 @@ export default function ApplyPage() {
   }
 
   if (submitted) {
-    if (screeningPassed) {
-      return (
-        <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center px-6">
-          <div className="max-w-md w-full rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-10 text-center space-y-5">
-            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 mx-auto">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Just one more step</h1>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Great news — you meet the screening requirements for{" "}
-              <span className="font-medium text-zinc-700 dark:text-zinc-300">{posting.title}</span>.
-              Please complete the Z83 Government Application Form to finalise your application.
-            </p>
-            <button onClick={() => router.push("/applicant/z83")}
-              className="mt-2 w-full rounded-xl bg-red-600 hover:bg-red-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors">
-              Continue to Z83 form
-            </button>
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center px-6">
         <div className="max-w-md w-full rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-10 text-center space-y-4">
@@ -249,7 +144,7 @@ export default function ApplyPage() {
           </div>
           <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Application submitted</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Thank you for applying for <span className="font-medium text-zinc-700 dark:text-zinc-300">{posting.title}</span>.
+            Thank you for applying for <span className="font-medium text-zinc-700 dark:text-zinc-300">{posting?.title}</span>.
             We will be in touch if your application is successful.
           </p>
           <p className="text-xs text-zinc-400 dark:text-zinc-500 leading-relaxed">
@@ -266,68 +161,46 @@ export default function ApplyPage() {
     );
   }
 
-  const allCriteria = posting.requirements.flatMap((r) => r.criteria);
-
-  function setAnswer(criterion: string, value: boolean) {
-    dispatch(reduxSetAnswer({ criterion, value }));
-  }
-
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     if (!user || !posting) return;
-
-    const unanswered = allCriteria.filter((c) => answers[c] === null);
-    if (unanswered.length > 0) { setError("Please answer all requirement questions."); return; }
     if (cvFiles.length === 0) { setError("Please upload your CV."); return; }
-    if (supportingFiles.length === 0) { setError("Please upload at least one supporting document."); return; }
 
-    const screeningpass = allCriteria.every((c) => answers[c] === true);
     const [firstName, ...rest] = (user.name ?? "").trim().split(" ");
-    const lastName = rest.join(" ");
-    const ref = posting.ref;
+    const lastName = rest.join(" ") || firstName;
 
     setSubmitting(true);
 
     (async () => {
       try {
-        const cvId = await uploadAsset(cvFiles[0]);
-        await hygraph.request(PUBLISH_ASSET, { id: cvId });
+        const form = new FormData();
+        form.append("user_id", String(user.id));
+        form.append("posting_id", String(posting.id));
+        form.append("ref_number", posting.ref_code);
+        form.append("firstname", firstName);
+        form.append("lastname", lastName);
+        form.append("identification", user.identification ?? "");
+        form.append("cv", cvFiles[0]);
+        if (supportingFiles[0]) form.append("docs", supportingFiles[0]);
 
-        const supportingIds = await Promise.all(supportingFiles.map(uploadAsset));
-        await Promise.all(supportingIds.map((id) => hygraph.request(PUBLISH_ASSET, { id })));
-
-        const result = await hygraph.request<{ createApplication: { id: string } }>(
-          CREATE_APPLICATION,
-          {
-            data: {
-              ref,
-              firstname: firstName,
-              lastname: lastName || firstName,
-              identification: user.identification ?? "",
-              cv: { connect: { id: cvId } },
-              supportingdocs: { connect: { id: supportingIds[0] } },
-              screeningpass,
-            },
-          }
-        );
-
-        await hygraph.request(PUBLISH_APPLICATION, { id: result.createApplication.id });
-
-        // Connect application to the posting's Applications relation
-        await hygraph.request(UPDATE_POSTING_ADD_APPLICATION, {
-          postingId: posting.id,
-          applicationId: result.createApplication.id,
+        const res = await fetch(`${BACKEND_URL}/applications`, {
+          method: "POST",
+          headers: { "ngrok-skip-browser-warning": "true" },
+          body: form,
         });
-        await hygraph.request(PUBLISH_POSTING, { id: posting.id });
 
-        localStorage.removeItem("ems_apply_posting");
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(data.error ?? "Submission failed.");
+        }
+
+        localStorage.removeItem(STORAGE_KEY);
         dispatch(clearDraft());
-        setScreeningPassed(screeningpass);
         setSubmitted(true);
       } catch (err) {
         console.error(err);
-        setError("Submission failed. Please try again.");
+        setError(err instanceof Error ? err.message : "Submission failed. Please try again.");
       } finally {
         setSubmitting(false);
       }
@@ -364,16 +237,16 @@ export default function ApplyPage() {
         {/* Posting header */}
         <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 space-y-3">
           <div>
-            <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-1">{posting.ref}</p>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-1">{posting.ref_code}</p>
             <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">{posting.title}</h1>
             {posting.department && <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{posting.department}</p>}
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-zinc-100 dark:bg-zinc-800 rounded-xl overflow-hidden">
             {[
               { label: "Location", value: posting.location },
-              { label: "Vacancies", value: posting.positions },
+              { label: "Vacancies",    value: posting.positions },
               { label: "Compensation", value: posting.compensation },
-              { label: "Closing date", value: posting.closingdate },
+              { label: "Closing date", value: posting.closing_date },
             ].filter((f) => f.value).map((f) => (
               <div key={f.label} className="bg-white dark:bg-zinc-900 px-4 py-3">
                 <p className="text-xs text-zinc-400 dark:text-zinc-500">{f.label}</p>
@@ -403,41 +276,6 @@ export default function ApplyPage() {
               </div>
             </div>
           </div>
-
-          {/* Requirements — Y/N questions */}
-          {allCriteria.length > 0 && (
-            <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 space-y-5">
-              <div>
-                <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">Screening questions</h2>
-                <p className="text-sm text-zinc-400 dark:text-zinc-500 mt-0.5">Answer all questions to proceed.</p>
-              </div>
-              {allCriteria.map((criterion, i) => (
-                <div key={i} className="space-y-2">
-                  <p className="text-sm text-zinc-700 dark:text-zinc-300">{criterion}</p>
-                  <div className="flex gap-2">
-                    <button type="button"
-                      onClick={() => setAnswer(criterion, true)}
-                      className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-all ${
-                        answers[criterion] === true
-                          ? "border-green-500 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400"
-                          : "border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:border-zinc-400"
-                      }`}>
-                      Yes
-                    </button>
-                    <button type="button"
-                      onClick={() => setAnswer(criterion, false)}
-                      className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-all ${
-                        answers[criterion] === false
-                          ? "border-red-400 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
-                          : "border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:border-zinc-400"
-                      }`}>
-                      No
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* Documents */}
           <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 space-y-6">
@@ -489,10 +327,4 @@ export default function ApplyPage() {
       </main>
     </div>
   );
-}
-
-
-interface Requirement {
-  id: string;
-  criteria: string[];
 }

@@ -1,18 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hash } from "bcryptjs";
-import { GraphQLClient } from "graphql-request";
-import { GET_AUTH_BY_EMAIL, CREATE_AUTH, PUBLISH_AUTH } from "@/lib/queries";
 
-interface AuthRecord { id: string }
-interface CreateAuthResult {
-  createAuth: { id: string; firstname: string; lastname: string; email: string };
-}
-
-const hygraph = new GraphQLClient(process.env.NEXT_PUBLIC_HYGRAPH_ENDPOINT ?? "", {
-  headers: {
-    Authorization: `Bearer ${process.env.NEXT_PUBLIC_HYGRAPH_TOKEN ?? ""}`,
-  },
-});
+const BACKEND_URL = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "").replace(/\/$/, "");
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,35 +20,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "All required fields must be provided." }, { status: 400 });
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
-
-    const { auths } = await hygraph.request<{ auths: AuthRecord[] }>(GET_AUTH_BY_EMAIL, {
-      email: normalizedEmail,
+    const backendRes = await fetch(`${BACKEND_URL}/auth/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
+      },
+      body: JSON.stringify({
+        firstname: firstname.trim(),
+        lastname: lastname.trim(),
+        email: email.toLowerCase().trim(),
+        password,
+        contact: contact?.trim() ?? "",
+        empid: role === "hr" ? (idNumber ?? "").trim() : null,
+        identification: role === "applicant" ? (idNumber ?? "").trim() : null,
+        is_hr: role === "hr",
+        is_applicant: role === "applicant",
+      }),
     });
-    if (auths.length > 0) {
-      return NextResponse.json({ error: "An account with that email already exists." }, { status: 409 });
+
+    const data = await backendRes.json() as {
+      error?: string;
+      id?: number;
+      firstname?: string;
+      lastname?: string;
+      email?: string;
+      identification?: string | null;
+    };
+
+    if (!backendRes.ok) {
+      return NextResponse.json(
+        { error: data.error ?? "Registration failed." },
+        { status: backendRes.status },
+      );
     }
 
-    const passwordHash = await hash(password, 10);
-
-    const result = await hygraph.request<CreateAuthResult>(CREATE_AUTH, {
-      firstname: firstname.trim(),
-      lastname: lastname.trim(),
-      email: normalizedEmail,
-      passwordHash,
-      contact: contact.trim(),
-      empid: role === "hr" ? (idNumber ?? "").trim() : null,
-      identification: role === "applicant" ? (idNumber ?? "").trim() : null,
-      hr: role === "hr",
-      applicant: role === "applicant",
-    });
-
-    await hygraph.request(PUBLISH_AUTH, { id: result.createAuth.id });
-
     return NextResponse.json({
-      id: result.createAuth.id,
-      name: `${result.createAuth.firstname} ${result.createAuth.lastname}`,
-      email: result.createAuth.email,
+      id: String(data.id),
+      name: `${data.firstname} ${data.lastname}`,
+      email: data.email,
       role,
       identification: role === "applicant" ? (idNumber ?? "").trim() : undefined,
     });

@@ -1,11 +1,10 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { useQuery } from "@tanstack/react-query";
-import { hygraph } from "@/lib/hygraph";
-import { GET_APPLICATIONS, CREATE_POSTING, UPDATE_POSTING, PUBLISH_POSTING, UNPUBLISH_POSTING, DELETE_POSTING } from "@/lib/queries";
+import { apiClient } from "@/lib/api";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   fetchPostings,
@@ -55,17 +54,16 @@ function PostingsPanel() {
   const postings = useAppSelector(selectFilteredPostings);
   const departments = useAppSelector(selectDepartments);
   const [drawer, setDrawer] = useState<DrawerMode | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   // Fetch once on mount; subsequent creates/edits/deletes update Redux directly
   useEffect(() => { dispatch(fetchPostings()); }, [dispatch]);
 
-  async function handleDelete(id: string) {
+  async function handleDelete(id: number) {
     if (!confirm("Delete this posting? This cannot be undone.")) return;
     setDeletingId(id);
     try {
-      await hygraph.request(UNPUBLISH_POSTING, { id });
-      await hygraph.request(DELETE_POSTING, { id });
+      await apiClient.delete(`/postings/${id}`);
       dispatch(removePosting(id));
     } catch (err) {
       console.error(err);
@@ -143,7 +141,6 @@ function PostingsPanel() {
         )}
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {postings.map((p) => {
-          const applicantCount = p.applications?.length ?? 0;
           const isDirty = dirtyIds.includes(p.id);
           return (
           <div key={p.id} className="group rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -161,7 +158,7 @@ function PostingsPanel() {
                         unsaved
                       </span>
                     )}
-                    <span className="font-mono text-[10px] text-zinc-400 bg-zinc-100 dark:bg-zinc-800 rounded px-1.5 py-0.5">{p.ref}</span>
+                    <span className="font-mono text-[10px] text-zinc-400 bg-zinc-100 dark:bg-zinc-800 rounded px-1.5 py-0.5">{p.ref_code}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -170,17 +167,6 @@ function PostingsPanel() {
                       {p.department}
                     </span>
                   )}
-                  {/* Applicant count badge */}
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                    applicantCount > 0
-                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400"
-                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500"
-                  }`}>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    {applicantCount} applicant{applicantCount !== 1 ? "s" : ""}
-                  </span>
                 </div>
               </div>
 
@@ -200,7 +186,7 @@ function PostingsPanel() {
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
-                    {p.positions} position{p.positions !== "1" ? "s" : ""}
+                    {p.positions} position{p.positions !== 1 ? "s" : ""}
                   </li>
                 )}
                 {p.compensation && (
@@ -215,12 +201,12 @@ function PostingsPanel() {
 
               {/* Footer */}
               <div className="pt-1 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2">
-                {p.closingdate ? (
+                {p.closing_date ? (
                   <div className="flex items-center gap-1.5 text-xs text-zinc-500">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    Closes&nbsp;<span className="font-medium text-zinc-700 dark:text-zinc-300">{p.closingdate}</span>
+                    Closes&nbsp;<span className="font-medium text-zinc-700 dark:text-zinc-300">{p.closing_date}</span>
                   </div>
                 ) : <span />}
                 <div className="flex items-center gap-1">
@@ -266,7 +252,7 @@ function AppRow({ a }: { a: Application }) {
   const initials = `${a.firstname?.[0] ?? ""}${a.lastname?.[0] ?? ""}`.toUpperCase();
   return (
     <tr className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors">
-      <td className="px-5 py-4 font-mono text-[11px] text-zinc-400 dark:text-zinc-500">{a.ref}</td>
+      <td className="px-5 py-4 font-mono text-[11px] text-zinc-400 dark:text-zinc-500">{a.ref_number}</td>
       <td className="px-5 py-4">
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs font-bold shrink-0">
@@ -278,13 +264,10 @@ function AppRow({ a }: { a: Application }) {
       <td className="px-5 py-4 text-zinc-500 dark:text-zinc-400 hidden md:table-cell">
         {a.identification || <span className="text-zinc-300 dark:text-zinc-600">—</span>}
       </td>
-      <td className="px-5 py-4 text-zinc-400 text-xs hidden sm:table-cell">
-        {new Date(a.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
-      </td>
       <td className="px-5 py-4">
         <div className="flex items-center gap-2">
-          {a.cv && (
-            <a href={a.cv.url} target="_blank" rel="noopener noreferrer"
+          {a.cv_url && (
+            <a href={a.cv_url} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-red-50 dark:hover:bg-red-900/20 text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 px-2.5 py-1 text-xs font-medium transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -292,8 +275,8 @@ function AppRow({ a }: { a: Application }) {
               CV
             </a>
           )}
-          {a.supportingdocs && (
-            <a href={a.supportingdocs.url} target="_blank" rel="noopener noreferrer"
+          {a.docs_url && (
+            <a href={a.docs_url} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-red-50 dark:hover:bg-red-900/20 text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 px-2.5 py-1 text-xs font-medium transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -301,7 +284,7 @@ function AppRow({ a }: { a: Application }) {
               Docs
             </a>
           )}
-          {!a.cv && !a.supportingdocs && <span className="text-zinc-300 dark:text-zinc-600 text-xs">None</span>}
+          {!a.cv_url && !a.docs_url && <span className="text-zinc-300 dark:text-zinc-600 text-xs">None</span>}
         </div>
       </td>
     </tr>
@@ -343,7 +326,6 @@ function AppSection({
                   <th className="px-5 py-3 text-left">Ref</th>
                   <th className="px-5 py-3 text-left">Applicant</th>
                   <th className="px-5 py-3 text-left hidden md:table-cell">ID Number</th>
-                  <th className="px-5 py-3 text-left hidden sm:table-cell">Applied</th>
                   <th className="px-5 py-3 text-left">Documents</th>
                 </tr>
               </thead>
@@ -361,64 +343,22 @@ function AppSection({
 function ApplicationsPanel() {
   const dispatch = useAppDispatch();
   const apps     = useAppSelector((s) => s.applications.draft);
-  const postings = useAppSelector((s) => s.postings.draft);
 
-  const { isLoading, isError, data: freshData } = useQuery<{ applications: Application[] }>({
+  const { isLoading, isError, data: freshData } = useQuery<Application[]>({
     queryKey: ["applications"],
-    queryFn: () => hygraph.request(GET_APPLICATIONS),
+    queryFn: () => apiClient.get<Application[]>("/applications"),
     staleTime: 2 * 60 * 1000,
   });
 
   useEffect(() => {
-    if (freshData?.applications) dispatch(applicationsServerLoaded(freshData.applications));
+    if (freshData) dispatch(applicationsServerLoaded(freshData));
   }, [freshData, dispatch]);
-
-  // Unique criteria across all postings, in encounter order
-  const allCriteria = useMemo(() => {
-    const seen = new Set<string>();
-    const result: string[] = [];
-    for (const p of postings) {
-      for (const r of p.requirements) {
-        for (const c of r.criteria) {
-          if (!seen.has(c)) { seen.add(c); result.push(c); }
-        }
-      }
-    }
-    return result;
-  }, [postings]);
-
-  // criterion text → set of posting refs that require it
-  const criterionToRefs = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    for (const p of postings) {
-      for (const r of p.requirements) {
-        for (const c of r.criteria) {
-          if (!map.has(c)) map.set(c, new Set());
-          map.get(c)!.add(p.ref);
-        }
-      }
-    }
-    return map;
-  }, [postings]);
 
   const [passOpen, setPassOpen] = useState(true);
   const [failOpen, setFailOpen] = useState(true);
-  const [z83Open,  setZ83Open]  = useState(true);
-  // Track open state for each criterion section by index
-  const [criterionOpen, setCriterionOpen] = useState<boolean[]>([]);
 
-  // Keep criterionOpen array in sync when allCriteria length changes
-  useEffect(() => {
-    setCriterionOpen((prev) => {
-      if (prev.length === allCriteria.length) return prev;
-      const next = allCriteria.map((_, i) => prev[i] ?? true);
-      return next;
-    });
-  }, [allCriteria]);
-
-  const passed    = apps.filter((a) => a.screeningpass);
-  const failed    = apps.filter((a) => !a.screeningpass);
-  const z83passed = apps.filter((a) => a.z83pass === true);
+  const passed = apps.filter((a) => a.screening_pass);
+  const failed  = apps.filter((a) => !a.screening_pass);
 
   if (isLoading && apps.length === 0) return <Spinner />;
   if (isError   && apps.length === 0) return <ErrorMsg>Failed to load applications.</ErrorMsg>;
@@ -434,28 +374,8 @@ function ApplicationsPanel() {
 
       {apps.length > 0 && (
         <div className="space-y-3">
-          <AppSection title="Passed Screening"      apps={passed}    accent="green" open={passOpen} onToggle={() => setPassOpen((v) => !v)} />
-          <AppSection title="Failed Screening"      apps={failed}    accent="red"   open={failOpen} onToggle={() => setFailOpen((v) => !v)} />
-          <AppSection title="Passed Z83 Screening"  apps={z83passed} accent="green" open={z83Open}  onToggle={() => setZ83Open((v) => !v)} />
-
-          {allCriteria.map((c, i) => {
-            const refs     = criterionToRefs.get(c) ?? new Set<string>();
-            const subApps  = apps.filter((a) => refs.has(a.ref));
-            return (
-              <AppSection
-                key={c}
-                title={c}
-                apps={subApps}
-                accent="green"
-                open={criterionOpen[i] ?? true}
-                onToggle={() => setCriterionOpen((prev) => {
-                  const next = [...prev];
-                  next[i] = !next[i];
-                  return next;
-                })}
-              />
-            );
-          })}
+          <AppSection title="Passed Screening" apps={passed} accent="green" open={passOpen} onToggle={() => setPassOpen((v) => !v)} />
+          <AppSection title="Failed Screening"  apps={failed}  accent="red"   open={failOpen} onToggle={() => setFailOpen((v) => !v)} />
         </div>
       )}
     </div>
@@ -468,8 +388,8 @@ function ApplicationsPanel() {
 type DrawerMode = { kind: "create" } | { kind: "edit"; posting: Posting };
 
 const EMPTY_FORM = {
-  ref: "", title: "", department: "", positions: "",
-  description: "", notes: "", closingdate: "",
+  ref_code: "", title: "", department: "", positions: "",
+  description: "", notes: "", closing_date: "",
   location: "", enquiries: "", compensation: "",
 };
 
@@ -487,13 +407,13 @@ function PostingDrawer({
   const [form, setForm] = useState(
     existing
       ? {
-          ref: existing.ref,
+          ref_code: existing.ref_code,
           title: existing.title,
           department: existing.department,
-          positions: existing.positions,
+          positions: String(existing.positions),
           description: existing.description,
           notes: existing.notes,
-          closingdate: existing.closingdate,
+          closing_date: existing.closing_date,
           location: existing.location,
           enquiries: existing.enquiries,
           compensation: existing.compensation,
@@ -519,10 +439,10 @@ function PostingDrawer({
 
   function validate(): boolean {
     const errs: Partial<Record<keyof typeof EMPTY_FORM, string>> = {};
-    if (!form.ref.trim())   errs.ref   = "Reference is required.";
+    if (!form.ref_code.trim())   errs.ref_code   = "Reference is required.";
     if (!form.title.trim()) errs.title = "Title is required.";
     if (!form.department.trim()) errs.department = "Department is required.";
-    if (!form.closingdate.trim()) errs.closingdate = "Closing date is required.";
+    if (!form.closing_date.trim()) errs.closing_date = "Closing date is required.";
     if (form.positions.trim() && !/^\d+$/.test(form.positions.trim()))
       errs.positions = "Must be a whole number.";
     setFieldErrors(errs);
@@ -533,29 +453,32 @@ function PostingDrawer({
     if (!validate()) return;
     setSaving(true);
 
-    // Send trimmed strings; never send nulls
-    const payload = Object.fromEntries(
-      Object.entries(form).map(([k, v]) => [k, (v as string).trim()])
-    );
+    const payload = {
+      ref_code:     form.ref_code.trim(),
+      title:        form.title.trim(),
+      department:   form.department.trim(),
+      positions:    form.positions.trim() ? Number(form.positions.trim()) : 0,
+      description:  form.description.trim(),
+      notes:        form.notes.trim(),
+      closing_date: form.closing_date.trim(),
+      location:     form.location.trim(),
+      enquiries:    form.enquiries.trim(),
+      compensation: form.compensation.trim(),
+    };
 
     try {
       if (isEdit && existing) {
-        dispatch(updateDraft({ id: existing.id, changes: form }));
-        await hygraph.request(UPDATE_POSTING, { id: existing.id, data: payload });
-        await hygraph.request(PUBLISH_POSTING, { id: existing.id });
+        dispatch(updateDraft({ id: existing.id, changes: payload }));
+        await apiClient.put(`/postings/${existing.id}`, payload);
         dispatch(markSaved(existing.id));
       } else {
-        const result = await hygraph.request<{ createPosting: Posting }>(
-          CREATE_POSTING, { data: payload }
-        );
-        await hygraph.request(PUBLISH_POSTING, { id: result.createPosting.id });
-        // Add directly to Redux — no re-fetch needed
-        dispatch(addPosting({ ...result.createPosting, applications: [] }));
+        const created = await apiClient.post<Posting>("/postings", payload);
+        dispatch(addPosting(created));
       }
       onClose();
     } catch (err) {
       console.error(err);
-      setFieldErrors((prev) => ({ ...prev, ref: "Save failed — please try again." }));
+      setFieldErrors((prev) => ({ ...prev, ref_code: "Save failed — please try again." }));
     } finally {
       setSaving(false);
     }
@@ -602,7 +525,7 @@ function PostingDrawer({
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <F k="ref" label="Reference" required placeholder="e.g. REFS/001" />
+            <F k="ref_code" label="Reference" required placeholder="e.g. REFS/001" />
             <F k="positions" label="Positions" placeholder="e.g. 2" />
           </div>
 
@@ -614,7 +537,7 @@ function PostingDrawer({
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <F k="closingdate" label="Closing Date" required placeholder="e.g. 30-06-2026" />
+            <F k="closing_date" label="Closing Date" required placeholder="e.g. 30-06-2026" />
             <F k="compensation" label="Compensation" placeholder="e.g. R200 000 p.a." />
           </div>
 

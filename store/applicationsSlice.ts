@@ -6,7 +6,7 @@ import { Application } from "./types";
 interface ApplicationsState {
   server: Application[];
   draft: Application[];
-  dirtyIds: string[];
+  dirtyIds: number[];
   status: "idle" | "loading" | "error";
 }
 
@@ -56,7 +56,7 @@ const applicationsSlice = createSlice({
 
     updateDraft(
       state,
-      action: PayloadAction<{ id: string; changes: Partial<Omit<Application, "id">> }>
+      action: PayloadAction<{ id: number; changes: Partial<Omit<Application, "id">> }>
     ) {
       const { id, changes } = action.payload;
       const idx = state.draft.findIndex((a) => a.id === id);
@@ -66,7 +66,7 @@ const applicationsSlice = createSlice({
       }
     },
 
-    revertDraft(state, action: PayloadAction<string>) {
+    revertDraft(state, action: PayloadAction<number>) {
       const id = action.payload;
       const server = state.server.find((a) => a.id === id);
       if (server) {
@@ -76,7 +76,7 @@ const applicationsSlice = createSlice({
       state.dirtyIds = state.dirtyIds.filter((d) => d !== id);
     },
 
-    markSaved(state, action: PayloadAction<string>) {
+    markSaved(state, action: PayloadAction<number>) {
       const id = action.payload;
       state.dirtyIds = state.dirtyIds.filter((d) => d !== id);
       const draft = state.draft.find((a) => a.id === id);
